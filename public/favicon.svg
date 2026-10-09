@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 40" role="img" aria-label="HAMLOG">
+  <rect width="64" height="40" rx="2" fill="#0a1a3a"/>
+  <rect x="3" y="3" width="58" height="34" fill="#1e4fd6"/>
+  <text x="32" y="26" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#ffffff">HAMLOG</text>
+</svg>
