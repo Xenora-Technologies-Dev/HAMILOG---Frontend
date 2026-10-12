@@ -251,7 +251,7 @@ export function ReminderForm({
           >
             {whatsappStatus && !whatsappStatus.canSend
               ? 'WhatsApp Cloud API is not ready. Set WHATSAPP_ENABLED=true plus PHONE_NUMBER_ID and ACCESS_TOKEN in backend/.env, then restart. Recipients also need a WhatsApp number.'
-              : 'WhatsApp Send now sends a normal session message with the reminder details to WHATSAPP_OWNER_NUMBERS (not a template). The number must have messaged this WhatsApp business account within 24 hours. Scheduled same-day send is unchanged.'}
+              : `Send now delivers this reminder with the ${whatsappStatus?.templateReminder ?? 'reminder_occurrence'} WhatsApp template. Scheduled reminders use the same template.`}
           </p>
         ) : null}
         <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
