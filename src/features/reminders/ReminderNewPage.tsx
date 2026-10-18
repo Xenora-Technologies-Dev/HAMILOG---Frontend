@@ -7,13 +7,11 @@ import { ReminderForm } from '@/features/reminders/ReminderForm'
 import { ApiError } from '@/services/apiClient'
 import { createReminder, listReminderCategories, type ReminderCategory } from '@/services/reminderService'
 import { listStaff, type StaffMember } from '@/services/staffService'
-import { getWhatsAppStatus, type WhatsAppStatus } from '@/services/whatsappService'
 
 export function ReminderNewPage() {
   const navigate = useNavigate()
   const [categories, setCategories] = useState<ReminderCategory[]>([])
   const [staff, setStaff] = useState<StaffMember[]>([])
-  const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
@@ -28,16 +26,9 @@ export function ReminderNewPage() {
             listReminderCategories(),
             listStaff({ pageSize: 100, isActive: true }),
           ])
-          let waStatus: WhatsAppStatus | null = null
-          try {
-            waStatus = (await getWhatsAppStatus()).data
-          } catch {
-            waStatus = null
-          }
           if (!cancelled) {
             setCategories(cats.data)
             setStaff(staffResult.data)
-            setWhatsappStatus(waStatus)
           }
         } catch (err) {
           if (!cancelled) {
@@ -68,15 +59,14 @@ export function ReminderNewPage() {
   return (
     <div>
       <PageHeader
-        title="New Reminder"
-        description="Create an independent important event. Occurrence dates are calculated by the system."
+        title="New reminder"
+        description="Name the event, when it happens, and when to be reminded."
         breadcrumb={<span>Home / Reminders / New</span>}
       />
       <Card>
         <ReminderForm
           categories={categories}
           staff={staff}
-          whatsappStatus={whatsappStatus}
           busy={busy}
           error={formError}
           submitLabel="Create reminder"

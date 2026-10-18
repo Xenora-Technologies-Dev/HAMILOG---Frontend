@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/Badge'
 import { Button, ButtonLink } from '@/components/ui/Button'
@@ -9,22 +9,12 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Select } from '@/components/ui/Select'
 import { Table } from '@/components/ui/Table'
 import { Can } from '@/components/Can'
-import { priorityTone, statusTone } from '@/features/reminders/reminderFormUtils'
+import { recurrenceLabel } from '@/features/reminders/reminderFormUtils'
 import { ApiError } from '@/services/apiClient'
-import {
-  downloadModuleExport,
-  triggerBlobDownload,
-} from '@/services/reportService'
-import {
-  completeReminder,
-  listReminderCategories,
-  listReminders,
-  type Reminder,
-  type ReminderCategory,
-} from '@/services/reminderService'
+import { downloadModuleExport, triggerBlobDownload } from '@/services/reportService'
+import { completeReminder, listReminders, type Reminder } from '@/services/reminderService'
 import { listStaff, type StaffMember } from '@/services/staffService'
-import { dubaiToday, formatDubaiDate, reminderWindowBucket } from '@/utils/date'
-
+import { dubaiToday, formatDubaiDate, formatDubaiTime, reminderWindowBucket } from '@/utils/date'
 
 function duePhrase(eventDate: string, status: string): string {
   if (status === 'COMPLETED') return 'Acknowledged'
@@ -32,7 +22,7 @@ function duePhrase(eventDate: string, status: string): string {
   const today = dubaiToday()
   if (eventDate === today) return 'Due today'
   const days = Math.round(
-    (Date.parse(eventDate + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000,
+    (Date.parse(`${eventDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000,
   )
   if (days < 0) return `${-days}d overdue`
   return `In ${days}d`
@@ -41,20 +31,12 @@ function duePhrase(eventDate: string, status: string): string {
 export function ReminderListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const search = searchParams.get('q') ?? ''
-  // The reminder list is intentionally limited to open/unacknowledged items.
   const status = 'ACTIVE'
-  const categoryId = searchParams.get('category') ?? ''
-  const priority = searchParams.get('priority') ?? ''
   const recipientUserId = searchParams.get('staff') ?? ''
   const windowFilter = searchParams.get('window') ?? ''
-  const recurring = searchParams.get('recurring') ?? ''
-  const sort =
-    (searchParams.get('sort') as 'eventDate_asc' | 'eventDate_desc' | 'createdAt_desc') ||
-    'eventDate_asc'
   const page = Number(searchParams.get('page') || '1') || 1
 
   const [rows, setRows] = useState<Reminder[]>([])
-  const [categories, setCategories] = useState<ReminderCategory[]>([])
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -82,21 +64,17 @@ export function ReminderListPage() {
     setError(null)
     try {
       const queueQuery = { page: 1, pageSize: 1, status: 'ACTIVE' as const }
-      const [reminders, cats, staffResult, todayQ, overdueQ, upcomingQ] = await Promise.all([
+      const [reminders, staffResult, todayQ, overdueQ, upcomingQ] = await Promise.all([
         listReminders({
           page,
           pageSize: 20,
           search: search.trim() || undefined,
           status,
-          categoryId: categoryId || undefined,
-          priority: priority || undefined,
           recipientUserId: recipientUserId || undefined,
           window: (windowFilter as 'overdue' | 'today' | 'upcoming') || undefined,
           completed: false,
-          recurring: recurring === '' ? undefined : recurring === 'true',
-          sort,
+          sort: 'eventDate_asc',
         }),
-        listReminderCategories(),
         listStaff({ pageSize: 100, isActive: true }).catch(() => ({ data: [] as StaffMember[] })),
         listReminders({ ...queueQuery, window: 'today' }),
         listReminders({ ...queueQuery, window: 'overdue' }),
@@ -110,23 +88,13 @@ export function ReminderListPage() {
         overdue: overdueQ.pagination.total,
         upcoming: upcomingQ.pagination.total,
       })
-      setCategories(cats.data)
       setStaff(staffResult.data)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Unable to load reminders')
     } finally {
       setLoading(false)
     }
-  }, [
-    page,
-    search,
-    categoryId,
-    priority,
-    recipientUserId,
-    windowFilter,
-    recurring,
-    sort,
-  ])
+  }, [page, search, recipientUserId, windowFilter])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -134,7 +102,6 @@ export function ReminderListPage() {
     }, 200)
     return () => window.clearTimeout(timer)
   }, [load])
-
 
   async function acknowledge(id: string) {
     setAckingId(id)
@@ -149,19 +116,11 @@ export function ReminderListPage() {
     }
   }
 
-  const categoryOptions = useMemo(
-    () => [
-      { value: '', label: 'All categories' },
-      ...categories.map((c) => ({ value: c.id, label: c.name })),
-    ],
-    [categories],
-  )
-
   return (
     <div>
       <PageHeader
         title="Reminders"
-        description="See what is due, who it is for, and acknowledge it in one tap. Amounts from the year planner are in the notes."
+        description="Open events, who they are for, and when they are due."
         breadcrumb={<span>Home / Reminders</span>}
         actions={
           <div className="flex flex-wrap gap-2">
@@ -177,12 +136,11 @@ export function ReminderListPage() {
         }
       />
 
-
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         {(
           [
-            { key: 'overdue', label: 'Overdue', hint: 'Still open, date has passed', count: queueCounts.overdue, tone: 'border-rose-200 bg-rose-50' },
-            { key: 'today', label: 'Due today', hint: 'Needs a look today', count: queueCounts.today, tone: 'border-sky-200 bg-sky-50' },
+            { key: 'overdue', label: 'Overdue', hint: 'Date has passed', count: queueCounts.overdue, tone: 'border-rose-200 bg-rose-50' },
+            { key: 'today', label: 'Due today', hint: 'Happening today', count: queueCounts.today, tone: 'border-sky-200 bg-sky-50' },
             { key: 'upcoming', label: 'Upcoming', hint: 'Next 30 days', count: queueCounts.upcoming, tone: 'border-amber-200 bg-amber-50' },
           ] as const
         ).map((queue) => {
@@ -191,11 +149,7 @@ export function ReminderListPage() {
             <button
               key={queue.key}
               type="button"
-              onClick={() =>
-                setFilter({
-                  window: active ? null : queue.key,
-                })
-              }
+              onClick={() => setFilter({ window: active ? null : queue.key })}
               className={`rounded-2xl border px-4 py-3 text-left shadow-sm transition ${queue.tone} ${active ? 'ring-2 ring-slate-900' : 'hover:shadow-md'}`}
             >
               <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{queue.label}</p>
@@ -222,12 +176,9 @@ export function ReminderListPage() {
                     format: 'csv',
                     search: search || undefined,
                     status,
-                    categoryId: categoryId || undefined,
-                    priority: priority || undefined,
                     recipientUserId: recipientUserId || undefined,
                     window: windowFilter || undefined,
                     completed: 'false',
-                    recurring: recurring || undefined,
                   }).then((blob) => triggerBlobDownload(blob, 'reminders.csv'))
                 }}
               >
@@ -241,64 +192,26 @@ export function ReminderListPage() {
           label="Search"
           value={search}
           onChange={(e) => setFilter({ q: e.target.value || null })}
-          placeholder="Title, person, reference"
+          placeholder="Event name"
         />
         <Select
-          label="Category"
-          value={categoryId}
-          onChange={(e) => setFilter({ category: e.target.value || null })}
-          options={categoryOptions}
-        />
-        <Select
-          label="Priority"
-          value={priority}
-          onChange={(e) => setFilter({ priority: e.target.value || null })}
-          options={[
-            { value: '', label: 'All priorities' },
-            { value: 'LOW', label: 'Low' },
-            { value: 'MEDIUM', label: 'Medium' },
-            { value: 'HIGH', label: 'High' },
-            { value: 'CRITICAL', label: 'Critical' },
-          ]}
-        />
-        <Select
-          label="Window"
+          label="Due"
           value={windowFilter}
           onChange={(e) => setFilter({ window: e.target.value || null })}
           options={[
             { value: '', label: 'All dates' },
             { value: 'overdue', label: 'Overdue' },
             { value: 'today', label: 'Today' },
-            { value: 'upcoming', label: 'Upcoming (30d)' },
+            { value: 'upcoming', label: 'Upcoming (30 days)' },
           ]}
         />
         <Select
-          label="Assigned staff"
+          label="Staff"
           value={recipientUserId}
           onChange={(e) => setFilter({ staff: e.target.value || null })}
           options={[
             { value: '', label: 'Anyone' },
-            ...staff.map((s) => ({ value: s.id, label: s.name })),
-          ]}
-        />
-        <Select
-          label="Recurring"
-          value={recurring}
-          onChange={(e) => setFilter({ recurring: e.target.value || null })}
-          options={[
-            { value: '', label: 'Any' },
-            { value: 'true', label: 'Recurring only' },
-            { value: 'false', label: 'One-time only' },
-          ]}
-        />
-        <Select
-          label="Sort"
-          value={sort}
-          onChange={(e) => setFilter({ sort: e.target.value || null }, false)}
-          options={[
-            { value: 'eventDate_asc', label: 'Event date ↑' },
-            { value: 'eventDate_desc', label: 'Event date ↓' },
-            { value: 'createdAt_desc', label: 'Newest created' },
+            ...staff.map((member) => ({ value: member.id, label: member.name })),
           ]}
         />
       </FilterBar>
@@ -306,10 +219,7 @@ export function ReminderListPage() {
       {loading ? <LoadingState label="Loading reminders…" /> : null}
       {!loading && error ? <ErrorState message={error} onRetry={() => void load()} /> : null}
       {!loading && !error && rows.length === 0 ? (
-        <EmptyState
-          title="No reminders found"
-          description="Create a reminder or adjust filters to see results."
-        />
+        <EmptyState title="No reminders" description="Create a reminder, or clear the filters." />
       ) : null}
 
       {!loading && !error && rows.length > 0 ? (
@@ -324,62 +234,39 @@ export function ReminderListPage() {
                   render: (row) => (
                     <Link className="font-medium text-slate-900 hover:underline" to={`/reminders/${row.id}`}>
                       {row.title}
-                      <span className="mt-0.5 block text-xs font-normal text-slate-500">
-                        {row.category.name}
-                        {row.notes ? ` · ${row.notes.split('\n')[0]}` : ''}
-                      </span>
                     </Link>
                   ),
                 },
                 {
-                  key: 'person',
-                  header: 'Person / Ref',
+                  key: 'when',
+                  header: 'Date and time',
                   render: (row) => (
                     <span>
-                      {row.personName || '—'}
-                      {row.referenceCode ? (
-                        <span className="mt-0.5 block text-xs text-slate-500">{row.referenceCode}</span>
-                      ) : null}
-                    </span>
-                  ),
-                },
-                {
-                  key: 'date',
-                  header: 'Date',
-                  render: (row) => {
-                    const bucket = row.status === 'COMPLETED' ? 'acknowledged' : reminderWindowBucket(row.eventDate)
-                    const tone = bucket === 'overdue' ? 'danger' : bucket === 'today' ? 'info' : bucket === 'acknowledged' ? 'success' : 'warning'
-                    return (
-                      <span>
-                        {formatDubaiDate(row.eventDate)}
-                        <span className="mt-1 block">
-                          <Badge tone={tone}>{duePhrase(row.eventDate, row.status)}</Badge>
-                        </span>
+                      {formatDubaiDate(row.eventDate)}
+                      <span className="mt-0.5 block text-xs text-slate-500">
+                        {formatDubaiTime(row.eventTime) || '—'}
                       </span>
-                    )
-                  },
-                },
-                {
-                  key: 'priority',
-                  header: 'Priority',
-                  render: (row) => <Badge tone={priorityTone(row.priority)}>{row.priority}</Badge>,
-                },
-                {
-                  key: 'assigned',
-                  header: 'Assigned',
-                  render: (row) => (
-                    <span>
-                      {row.ownerUser?.name ?? 'Unassigned'}
-                      {row.personName ? (
-                        <span className="mt-0.5 block text-xs text-slate-500">For {row.personName}</span>
-                      ) : null}
                     </span>
                   ),
                 },
                 {
-                  key: 'status',
-                  header: 'Status',
-                  render: (row) => <Badge tone={statusTone(row.status)}>{row.status === 'COMPLETED' ? 'ACKNOWLEDGED' : row.status}</Badge>,
+                  key: 'repeats',
+                  header: 'Repeats',
+                  render: (row) => recurrenceLabel(row.recurrenceType, row.recurrenceInterval),
+                },
+                {
+                  key: 'staff',
+                  header: 'Staff',
+                  render: (row) => row.ownerUser?.name ?? 'Unassigned',
+                },
+                {
+                  key: 'due',
+                  header: 'Due',
+                  render: (row) => {
+                    const bucket = reminderWindowBucket(row.eventDate)
+                    const tone = bucket === 'overdue' ? 'danger' : bucket === 'today' ? 'info' : 'warning'
+                    return <Badge tone={tone}>{duePhrase(row.eventDate, row.status)}</Badge>
+                  },
                 },
                 {
                   key: 'ack',
@@ -400,36 +287,34 @@ export function ReminderListPage() {
           </div>
 
           <div className="space-y-3 md:hidden">
-            {rows.map((row) => (
-              <div
-                key={row.id}
-                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <Link className="font-medium text-slate-900 hover:underline" to={`/reminders/${row.id}`}>
-                      {row.title}
-                    </Link>
-                    <p className="text-sm text-slate-500">
-                      {row.personName || 'No person'} · {formatDubaiDate(row.eventDate)}
-                    </p>
+            {rows.map((row) => {
+              const bucket = reminderWindowBucket(row.eventDate)
+              const tone = bucket === 'overdue' ? 'danger' : bucket === 'today' ? 'info' : 'warning'
+              return (
+                <div key={row.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <Link className="font-medium text-slate-900 hover:underline" to={`/reminders/${row.id}`}>
+                    {row.title}
+                  </Link>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {formatDubaiDate(row.eventDate)}
+                    {formatDubaiTime(row.eventTime) ? ` · ${formatDubaiTime(row.eventTime)}` : ''}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {recurrenceLabel(row.recurrenceType, row.recurrenceInterval)} · {row.ownerUser?.name ?? 'Unassigned'}
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Badge tone={tone}>{duePhrase(row.eventDate, row.status)}</Badge>
+                    {row.status === 'ACTIVE' ? (
+                      <Can permission="reminders.complete">
+                        <Button size="sm" busy={ackingId === row.id} onClick={() => void acknowledge(row.id)}>
+                          Acknowledge
+                        </Button>
+                      </Can>
+                    ) : null}
                   </div>
-                  <Badge tone={statusTone(row.status)}>{row.status}</Badge>
                 </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Badge tone={priorityTone(row.priority)}>{row.priority}</Badge>
-                  <Badge>{duePhrase(row.eventDate, row.status)}</Badge>
-                  <span className="text-xs text-slate-500">{row.ownerUser?.name ?? 'Unassigned'}</span>
-                  {row.status === 'ACTIVE' ? (
-                    <Can permission="reminders.complete">
-                      <Button size="sm" busy={ackingId === row.id} onClick={() => void acknowledge(row.id)}>
-                        Acknowledge
-                      </Button>
-                    </Can>
-                  ) : null}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           <Pagination

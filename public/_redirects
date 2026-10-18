@@ -1,0 +1,3 @@
+# Client-side routes such as /reminders have no file on Netlify.
+# Serve the app for those paths and leave the URL unchanged.
+/*    /index.html   200

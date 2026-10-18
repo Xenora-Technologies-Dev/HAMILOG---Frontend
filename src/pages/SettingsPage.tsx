@@ -93,6 +93,12 @@ export function SettingsPage() {
                   <dt className="text-slate-500">Template to approve</dt>
                   <dd>{status.templateReminder}</dd>
                 </div>
+                {status.templateEventAssigned ? (
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-slate-500">Staff notice template</dt>
+                    <dd>{status.templateEventAssigned}</dd>
+                  </div>
+                ) : null}
                 <div className="pt-2">
                   <Link to="/whatsapp" className="text-sm font-medium text-slate-900 underline-offset-2 hover:underline">
                     Open WhatsApp log
@@ -102,8 +108,8 @@ export function SettingsPage() {
             ) : null}
 
             <p className="mt-4 border-t border-slate-100 pt-4 text-sm text-slate-600">
-              Each reminder is sent on its scheduled day and time with this one template. Two reminders
-              due at the same moment are sent one after another.
+              The owner WhatsApp number receives the day's reminders at 9:00 and the ones still open at 17:00.
+              Each staff reminder is sent at the time stored on that event.
             </p>
           </Card>
         </Can>

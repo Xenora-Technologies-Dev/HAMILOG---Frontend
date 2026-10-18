@@ -8,6 +8,7 @@ export type WhatsAppStatus = {
   apiVersion: string
   templateReminder: string
   templateDailySummary: string
+  templateEventAssigned?: string
 }
 
 export type WhatsAppLogDirection = 'all' | 'inbound' | 'outbound'
@@ -62,6 +63,7 @@ export type WhatsAppLog = {
     lastEventStatus: string | null
   }
   template: WhatsAppTemplateDefinition
+  assignedTemplate?: WhatsAppTemplateDefinition
   counts: {
     outbound: number
     inbound: number

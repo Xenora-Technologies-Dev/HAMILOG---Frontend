@@ -182,6 +182,7 @@ export type CalendarReminder = {
   id: string
   title: string
   eventDate: string
+  eventTime: string | null
   priority: string
   status: string
   personName: string | null

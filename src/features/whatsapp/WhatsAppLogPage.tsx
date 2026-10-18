@@ -79,7 +79,7 @@ export function WhatsAppLogPage() {
     <div>
       <PageHeader
         title="WhatsApp log"
-        description="One Meta template. Each reminder is sent on its own day and time. Reminders that share that slot are sent one after another with this same template."
+        description="The owner gets the day's reminders at 9:00 and the ones still open at 17:00. Staff reminders use the event template. Assigning an event to staff needs the extra template below."
         breadcrumb={<span>Home / WhatsApp log</span>}
         actions={
           <Button variant="secondary" onClick={() => void load(direction)} disabled={loading}>
@@ -104,6 +104,16 @@ export function WhatsAppLogPage() {
               copied={copied}
               onCopy={copyText}
             />
+            {log.assignedTemplate ? (
+              <TemplateCard
+                template={log.assignedTemplate}
+                title="Staff assignment template"
+                description="Approve this Utility template before a staff member can be told on WhatsApp that an event was created for them. Their timed reminder still uses the template above."
+                copyPrefix="assigned"
+                copied={copied}
+                onCopy={copyText}
+              />
+            ) : null}
           </div>
         </div>
       ) : null}

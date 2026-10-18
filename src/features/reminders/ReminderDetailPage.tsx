@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/Badge'
 import { Button, ButtonLink } from '@/components/ui/Button'
@@ -8,7 +8,12 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/ui/Feedback'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Table } from '@/components/ui/Table'
 import { Can } from '@/components/Can'
-import { priorityTone, statusTone } from '@/features/reminders/reminderFormUtils'
+import {
+  groupOccurrencesByEvent,
+  occurrenceStatusLabel,
+  recurrenceLabel,
+  statusTone,
+} from '@/features/reminders/reminderFormUtils'
 import { ApiError } from '@/services/apiClient'
 import {
   cancelReminder,
@@ -18,7 +23,7 @@ import {
   type ReminderDetail,
   type ReminderSendNowResult,
 } from '@/services/reminderService'
-import { formatDubaiDate, formatDubaiDateTime } from '@/utils/date'
+import { dubaiToday, formatDubaiDate, formatDubaiDateTime, formatDubaiTime } from '@/utils/date'
 
 export function ReminderDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -68,18 +73,45 @@ export function ReminderDetailPage() {
     }
   }
 
+  const eventGroups = useMemo(
+    () => (detail ? groupOccurrencesByEvent(detail.occurrences) : []),
+    [detail],
+  )
+
   if (loading) return <LoadingState label="Loading reminder…" />
   if (error && !detail) return <ErrorState message={error} onRetry={() => void load()} />
-  if (!detail) return <EmptyState title="Not found" description="Reminder does not exist." />
+  if (!detail) return <EmptyState title="Not found" description="This reminder does not exist." />
 
+  const today = dubaiToday()
   const canMutate = detail.status === 'ACTIVE' || detail.status === 'PAUSED'
+  const eventTime = formatDubaiTime(detail.eventTime)
+  const upcoming = eventGroups.filter((row) => row.eventDate >= today).slice(0, 8)
+  const historyStart = eventGroups.findIndex((row) => row.eventDate >= today)
+  const historyFrom = Math.max(0, (historyStart === -1 ? eventGroups.length : historyStart) - 8)
+  const history = eventGroups.slice(historyFrom, historyFrom + 40)
+  const savedDetails = [detail.personName, detail.referenceCode, detail.description, detail.notes].some(Boolean)
   const sendNowMessage = sendNowResult
     ? sendNowResult.failed > 0 && sendNowResult.sent === 0
-      ? `WhatsApp send now failed: ${sendNowResult.results.map((row) => row.errorMessage).filter(Boolean).join('; ') || 'no recipient phone'}`
+      ? `WhatsApp was not sent. ${sendNowResult.results.map((row) => row.errorMessage).filter(Boolean).join('; ') || 'No recipient phone.'}`
       : sendNowResult.failed > 0
-        ? `WhatsApp sent to ${sendNowResult.sent} recipient(s); ${sendNowResult.failed} failed.`
-        : `WhatsApp sent now to ${sendNowResult.sent} recipient(s).`
+        ? `WhatsApp sent to ${sendNowResult.sent}. ${sendNowResult.failed} failed.`
+        : `WhatsApp sent to ${sendNowResult.sent}.`
     : null
+
+  async function markDateDone(ids: string[]) {
+    setBusy(true)
+    setError(null)
+    try {
+      for (const occurrenceId of ids) {
+        await completeOccurrence(occurrenceId)
+      }
+      await load()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Unable to update this date')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div>
@@ -96,7 +128,7 @@ export function ReminderDetailPage() {
       ) : null}
       <PageHeader
         title={detail.title}
-        description={`${detail.category.name} · Event ${formatDubaiDate(detail.eventDate)} (Asia/Dubai)`}
+        description={`${formatDubaiDate(detail.eventDate)}${eventTime ? ` at ${eventTime}` : ''} · ${recurrenceLabel(detail.recurrenceType, detail.recurrenceInterval)}`}
         breadcrumb={<span>Home / Reminders / Detail</span>}
         actions={
           <div className="flex flex-wrap gap-2">
@@ -111,9 +143,7 @@ export function ReminderDetailPage() {
               ) : null}
             </Can>
             <Can permission="reminders.complete">
-              {canMutate ? (
-                <Button onClick={() => setConfirm('complete')}>Acknowledge</Button>
-              ) : null}
+              {canMutate ? <Button onClick={() => setConfirm('complete')}>Acknowledge</Button> : null}
             </Can>
             <Can permission="reminders.delete">
               {canMutate ? (
@@ -126,40 +156,49 @@ export function ReminderDetailPage() {
         }
       />
 
-      {error ? <div className="mb-4"><ErrorState message={error} /></div> : null}
+      {error ? (
+        <div className="mb-4">
+          <ErrorState message={error} />
+        </div>
+      ) : null}
 
-      <div className="mb-4 grid gap-4 lg:grid-cols-3">
-        <Card title="Summary">
-          <dl className="space-y-2 text-sm">
-            <div className="flex justify-between gap-3"><dt className="text-slate-500">Status</dt><dd><Badge tone={statusTone(detail.status)}>{detail.status}</Badge></dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-slate-500">Priority</dt><dd><Badge tone={priorityTone(detail.priority)}>{detail.priority}</Badge></dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-slate-500">Person</dt><dd>{detail.personName || '—'}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-slate-500">Reference</dt><dd>{detail.referenceCode || '—'}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-slate-500">Owner</dt><dd>{detail.ownerUser?.name || '—'}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-slate-500">Recurrence</dt><dd>{detail.recurrenceType}{detail.recurrenceType !== 'NONE' ? ` / ${detail.recurrenceInterval}` : ''}</dd></div>
+      <div className="mb-4">
+        <Card>
+          <dl className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <dt className="text-xs font-medium tracking-wide text-slate-500 uppercase">Date and time</dt>
+              <dd className="mt-1 text-sm font-medium text-slate-900">
+                {formatDubaiDate(detail.eventDate)}
+                {eventTime ? ` at ${eventTime}` : ''}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium tracking-wide text-slate-500 uppercase">Repeats</dt>
+              <dd className="mt-1 text-sm font-medium text-slate-900">
+                {recurrenceLabel(detail.recurrenceType, detail.recurrenceInterval)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium tracking-wide text-slate-500 uppercase">Staff</dt>
+              <dd className="mt-1 text-sm font-medium text-slate-900">{detail.ownerUser?.name || 'Unassigned'}</dd>
+            </div>
           </dl>
-          {detail.description ? <p className="mt-4 text-sm text-slate-600">{detail.description}</p> : null}
         </Card>
+      </div>
 
-        <Card title="Rules">
-          <ul className="space-y-2 text-sm">
-            {detail.rules.map((rule) => (
-              <li key={rule.id} className="rounded-lg border border-slate-100 px-3 py-2">
-                {rule.offsetValue === 0 ? 'Same day' : `${rule.offsetValue} ${rule.offsetUnit.toLowerCase()} before`} at {rule.sendTimeLocal}
-              </li>
-            ))}
-          </ul>
-        </Card>
-
-        <Card title="Recipients">
-          {detail.recipients.length === 0 ? (
-            <p className="text-sm text-slate-500">No recipients</p>
+      <div className="mb-4">
+        <Card title="Upcoming dates" description="The next times this event happens.">
+          {upcoming.length === 0 ? (
+            <p className="text-sm text-slate-500">No upcoming dates.</p>
           ) : (
-            <ul className="space-y-2 text-sm">
-              {detail.recipients.map((r) => (
-                <li key={r.id}>
-                  {r.user?.name ?? 'Unknown'}{' '}
-                  <span className="text-xs text-slate-500">({r.recipientType}{r.isPrimary ? ', primary' : ''})</span>
+            <ul className="divide-y divide-slate-100">
+              {upcoming.map((row) => (
+                <li key={row.eventDate} className="flex flex-wrap items-baseline justify-between gap-2 py-2 text-sm">
+                  <span className="font-medium text-slate-900">
+                    {formatDubaiDate(row.eventDate)}
+                    {eventTime ? <span className="font-normal text-slate-500"> · {eventTime}</span> : null}
+                  </span>
+                  <span className="text-slate-500">{row.remindOn}</span>
                 </li>
               ))}
             </ul>
@@ -168,60 +207,57 @@ export function ReminderDetailPage() {
       </div>
 
       <div className="mb-4">
-        <Card title="Occurrence history" description="System-generated schedule. Historical sent/completed rows are preserved.">
+        <Card
+          title="Dates"
+          description={
+            eventGroups.length > history.length
+              ? `Showing ${history.length} of ${eventGroups.length} event dates.`
+              : 'One row for each chosen date.'
+          }
+        >
           <Table
-            rows={detail.occurrences.map((o) => ({ ...o, id: o.id }))}
-            empty={<EmptyState title="No occurrences" description="Rules will generate schedule entries." />}
+            rows={history}
+            empty={<EmptyState title="No dates yet" description="Saving the reminder creates its dates." />}
             columns={[
               {
                 key: 'event',
                 header: 'Event date',
-                render: (o) => formatDubaiDate(o.eventDate),
+                render: (row) => formatDubaiDate(row.eventDate),
               },
               {
-                key: 'scheduled',
-                header: 'Scheduled (Dubai)',
-                render: (o) => formatDubaiDateTime(o.scheduledFor),
+                key: 'time',
+                header: 'Time',
+                render: () => eventTime || '—',
               },
               {
-                key: 'rule',
-                header: 'Rule',
-                render: (o) =>
-                  o.rule.offsetValue === 0
-                    ? 'Same day'
-                    : `${o.rule.offsetValue} ${o.rule.offsetUnit.toLowerCase()} before`,
+                key: 'remind',
+                header: 'Remind on',
+                render: (row) => row.remindOn,
+              },
+              {
+                key: 'staff',
+                header: 'Staff',
+                render: () => detail.ownerUser?.name || 'Unassigned',
               },
               {
                 key: 'status',
                 header: 'Status',
-                render: (o) => <Badge tone={statusTone(o.status)}>{o.status}</Badge>,
+                render: (row) => <Badge tone={statusTone(row.status)}>{occurrenceStatusLabel(row.status)}</Badge>,
               },
               {
                 key: 'actions',
                 header: '',
-                render: (o) =>
-                  o.status === 'PENDING' ? (
+                render: (row) =>
+                  row.pendingIds.length > 0 ? (
                     <Can permission="reminders.complete">
                       <Button
                         size="sm"
                         variant="secondary"
                         disabled={busy}
                         busy={busy}
-                        onClick={() => {
-                          void (async () => {
-                            setBusy(true)
-                            try {
-                              await completeOccurrence(o.id)
-                              await load()
-                            } catch (err) {
-                              setError(err instanceof ApiError ? err.message : 'Unable to complete occurrence')
-                            } finally {
-                              setBusy(false)
-                            }
-                          })()
-                        }}
+                        onClick={() => void markDateDone(row.pendingIds)}
                       >
-                        Complete
+                        Done
                       </Button>
                     </Can>
                   ) : null,
@@ -231,74 +267,75 @@ export function ReminderDetailPage() {
         </Card>
       </div>
 
+      {savedDetails ? (
+        <div className="mb-4">
+          <Card title="Saved details">
+            <dl className="space-y-2 text-sm">
+              {detail.personName ? (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Person</dt>
+                  <dd>{detail.personName}</dd>
+                </div>
+              ) : null}
+              {detail.referenceCode ? (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Reference</dt>
+                  <dd>{detail.referenceCode}</dd>
+                </div>
+              ) : null}
+              {detail.description ? <p className="text-slate-700">{detail.description}</p> : null}
+              {detail.notes ? <p className="whitespace-pre-wrap text-slate-600">{detail.notes}</p> : null}
+            </dl>
+          </Card>
+        </div>
+      ) : null}
+
       <div className="mb-4">
-        <Card
-          title="Notification history"
-          description="Daily summaries and WhatsApp delivery status for this reminder (Asia/Dubai)."
-        >
+        <Card title="Messages" description="WhatsApp messages sent for this reminder.">
           {(detail.notificationHistory?.length ?? 0) === 0 ? (
-            <EmptyState
-              title="No notifications yet"
-              description="Daily WhatsApp summaries and occurrence messages will appear here."
-            />
+            <EmptyState title="No messages yet" description="Sent reminders will appear here." />
           ) : (
             <Table
-              rows={detail.notificationHistory.map((n) => ({ ...n, id: n.id }))}
+              rows={detail.notificationHistory.map((row) => ({ ...row, id: row.id }))}
               columns={[
                 {
                   key: 'when',
                   header: 'When',
-                  render: (n) => formatDubaiDateTime(n.sentAt ?? n.createdAt),
+                  render: (row) => formatDubaiDateTime(row.sentAt ?? row.createdAt),
                 },
                 {
                   key: 'type',
                   header: 'Type',
-                  render: (n) => (
-                    <span>
-                      {n.messageType === 'DAILY_SUMMARY'
-                        ? 'Daily summary'
-                        : n.messageType === 'MANUAL'
-                          ? 'Test / manual'
-                          : 'Occurrence'}
-                      {n.isTest ? ' (test)' : ''}
-                      {n.forDate ? (
-                        <span className="mt-0.5 block text-xs text-slate-500">{n.forDate}</span>
-                      ) : null}
-                    </span>
-                  ),
+                  render: (row) =>
+                    row.messageType === 'DAILY_SUMMARY'
+                      ? 'Daily summary'
+                      : row.messageType === 'MANUAL'
+                        ? 'Manual'
+                        : 'Reminder',
                 },
                 {
                   key: 'recipient',
                   header: 'Recipient',
-                  render: (n) => n.recipientName || n.recipientPhoneMasked || '—',
+                  render: (row) => row.recipientName || row.recipientPhoneMasked || '—',
                 },
                 {
                   key: 'status',
                   header: 'Status',
-                  render: (n) => (
+                  render: (row) => (
                     <span
                       className={
-                        n.status === 'FAILED'
+                        row.status === 'FAILED'
                           ? 'text-rose-700'
-                          : n.status === 'DELIVERED' || n.status === 'READ'
+                          : row.status === 'DELIVERED' || row.status === 'READ'
                             ? 'text-emerald-700'
                             : 'text-slate-700'
                       }
                     >
-                      {n.status === 'DELIVERED' || n.status === 'READ'
-                        ? '✓ Delivered'
-                        : n.status === 'FAILED'
-                          ? '⚠ Failed'
-                          : n.status}
-                    </span>
-                  ),
-                },
-                {
-                  key: 'provider',
-                  header: 'Provider ID',
-                  render: (n) => (
-                    <span className="font-mono text-xs text-slate-500">
-                      {n.providerMessageId ? `${n.providerMessageId.slice(0, 16)}…` : '—'}
+                      {row.status === 'DELIVERED' || row.status === 'READ'
+                        ? 'Delivered'
+                        : row.status === 'FAILED'
+                          ? 'Failed'
+                          : row.status}
                     </span>
                   ),
                 },
@@ -308,9 +345,9 @@ export function ReminderDetailPage() {
         </Card>
       </div>
 
-      <Card title="Audit history">
+      <Card title="Activity">
         {detail.auditTrail.length === 0 ? (
-          <EmptyState title="No audit entries" description="Actions on this reminder will appear here." />
+          <EmptyState title="No activity yet" description="Changes to this reminder will appear here." />
         ) : (
           <ul className="space-y-3">
             {detail.auditTrail.map((item) => (
@@ -319,12 +356,7 @@ export function ReminderDetailPage() {
                   <span className="font-medium text-slate-800">{item.action}</span>
                   <span className="text-xs text-slate-500">{formatDubaiDateTime(item.createdAt)}</span>
                 </div>
-                <p className="mt-1 text-slate-600">
-                  {item.actorName}
-                  {item.metadata && typeof item.metadata === 'object' && 'event' in item.metadata
-                    ? ` · ${String((item.metadata as { event?: string }).event)}`
-                    : ''}
-                </p>
+                <p className="mt-1 text-slate-600">{item.actorName}</p>
               </li>
             ))}
           </ul>
@@ -336,8 +368,8 @@ export function ReminderDetailPage() {
         title={confirm === 'complete' ? 'Acknowledge reminder?' : 'Cancel reminder?'}
         message={
           confirm === 'complete'
-            ? 'This acknowledges the reminder as done and keeps the history.'
-            : 'This cancels the reminder and future notifications. Historical occurrences are preserved.'
+            ? 'This marks the reminder as done and keeps the dates.'
+            : 'This stops future reminders. Dates already sent stay in the history.'
         }
         confirmLabel={confirm === 'complete' ? 'Acknowledge' : 'Cancel reminder'}
         danger={confirm === 'cancel'}

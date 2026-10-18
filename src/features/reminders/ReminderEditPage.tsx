@@ -62,8 +62,8 @@ export function ReminderEditPage() {
   return (
     <div>
       <PageHeader
-        title="Edit Reminder"
-        description="Changing the event date recalculates future occurrences and preserves sent history."
+        title="Edit reminder"
+        description="Update the event. Future dates follow the new date, time, and recurrence."
         breadcrumb={<span>Home / Reminders / Edit</span>}
       />
       <Card>
