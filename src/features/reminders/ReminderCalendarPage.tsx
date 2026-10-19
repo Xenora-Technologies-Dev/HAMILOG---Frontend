@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -53,26 +53,32 @@ export function ReminderCalendarPage() {
   const weekStart = startOfWeek(anchor)
   const weekEnd = addDaysToDateOnly(weekStart, 6)
   const range = view === 'week' ? { from: weekStart, to: weekEnd } : monthRange(year!, monthIndex0)
+  const rangeFrom = range.from
+  const rangeTo = range.to
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await getReminderCalendar(range.from, range.to)
-      setItems(res.data)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Unable to load calendar')
-    } finally {
-      setLoading(false)
-    }
-  }, [range.from, range.to])
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
+    let cancelled = false
     const timer = window.setTimeout(() => {
-      void load()
+      setLoading(true)
+      setError(null)
+      getReminderCalendar(rangeFrom, rangeTo)
+        .then((res) => {
+          if (!cancelled) setItems(res.data)
+        })
+        .catch((err: unknown) => {
+          if (!cancelled) setError(err instanceof ApiError ? err.message : 'Unable to load calendar')
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
     }, 0)
-    return () => window.clearTimeout(timer)
-  }, [load])
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [rangeFrom, rangeTo, reloadKey])
 
   const byDate = useMemo(() => {
     const map = new Map<string, CalendarReminder[]>()
@@ -144,7 +150,7 @@ export function ReminderCalendarPage() {
         }
       >
         {loading ? <LoadingState label="Loading calendar…" /> : null}
-        {!loading && error ? <ErrorState message={error} onRetry={() => void load()} /> : null}
+        {!loading && error ? <ErrorState message={error} onRetry={() => setReloadKey((key) => key + 1)} /> : null}
         {!loading && !error ? (
           <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (

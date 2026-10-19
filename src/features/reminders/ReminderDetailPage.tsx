@@ -368,7 +368,9 @@ export function ReminderDetailPage() {
         title={confirm === 'complete' ? 'Acknowledge reminder?' : 'Cancel reminder?'}
         message={
           confirm === 'complete'
-            ? 'This marks the reminder as done and keeps the dates.'
+            ? detail?.recurrenceType && detail.recurrenceType !== 'NONE'
+              ? 'This acknowledges this date only. The reminder moves to its next date and future reminders stay scheduled.'
+              : 'This marks the reminder as done and keeps the dates.'
             : 'This stops future reminders. Dates already sent stay in the history.'
         }
         confirmLabel={confirm === 'complete' ? 'Acknowledge' : 'Cancel reminder'}
