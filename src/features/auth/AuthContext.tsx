@@ -70,8 +70,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {
-    const result = await authService.login(email, password)
-    setUser(result.user)
+    await authService.login(email, password)
+    // The password was accepted, but the session only works if the browser kept the
+    // cookie. Confirm with /auth/me instead of trusting the login response, so a
+    // blocked cookie (e.g. iPhone Safari) shows an error rather than a fake login.
+    let verified: Awaited<ReturnType<typeof authService.getCurrentUser>>
+    try {
+      verified = await authService.getCurrentUser()
+    } catch (error) {
+      setUser(null)
+      setStatus('unauthenticated')
+      if (error instanceof ApiError && error.status === 401) {
+        throw new ApiError(401, {
+          error: {
+            code: 'SESSION_COOKIE_BLOCKED',
+            message:
+              'Your password was accepted, but your browser blocked the login session. ' +
+              'Turn off "Block All Cookies" / "Prevent Cross-Site Tracking" or try another browser, then sign in again.',
+          },
+        })
+      }
+      throw error
+    }
+    setUser(verified.user)
     setStatus('authenticated')
   }, [])
 

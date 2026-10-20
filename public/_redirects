@@ -1,3 +1,8 @@
+# API proxy: the browser calls /api/* on this Netlify site, so the session
+# cookie is first-party (iPhone Safari blocks cookies from the Railway domain).
+# Must stay above the SPA fallback. The WhatsApp webhook still points at Railway directly.
+/api/*  https://hamilog-backend-production.up.railway.app/api/:splat  200
+
 # Client-side routes such as /reminders have no file on Netlify.
 # Serve the app for those paths and leave the URL unchanged.
 /*    /index.html   200
