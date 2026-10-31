@@ -80,6 +80,26 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   })
 }
 
+export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
+  return withProcess(path, 'mutate', async () => {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'PUT',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      throw await parseError(response)
+    }
+
+    return (await response.json()) as T
+  })
+}
+
 export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
   return withProcess(path, 'mutate', async () => {
     const response = await fetch(`${API_BASE_URL}${path}`, {

@@ -1,17 +1,29 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ErrorState, LoadingState } from '@/components/ui/Feedback'
+import { Input } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Can } from '@/components/Can'
+import { usePermissions } from '@/hooks/usePermissions'
 import { ApiError } from '@/services/apiClient'
+import { getWhatsAppOwner, saveWhatsAppOwner } from '@/services/settingsService'
 import { getWhatsAppStatus, type WhatsAppStatus } from '@/services/whatsappService'
 
 export function SettingsPage() {
+  const { can } = usePermissions()
+  const canUpdateOwner = can('settings.update')
   const [status, setStatus] = useState<WhatsAppStatus | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [ownerName, setOwnerName] = useState('')
+  const [ownerPhone, setOwnerPhone] = useState('')
+  const [ownerLoading, setOwnerLoading] = useState(true)
+  const [ownerError, setOwnerError] = useState<string | null>(null)
+  const [ownerSaving, setOwnerSaving] = useState(false)
+  const [ownerSaved, setOwnerSaved] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -26,12 +38,44 @@ export function SettingsPage() {
     }
   }, [])
 
+  const loadOwner = useCallback(async () => {
+    setOwnerLoading(true)
+    setOwnerError(null)
+    try {
+      const res = await getWhatsAppOwner()
+      setOwnerName(res.data.name)
+      setOwnerPhone(res.data.phone ?? '')
+    } catch (err) {
+      setOwnerError(err instanceof ApiError ? err.message : 'Unable to load the reminder owner')
+    } finally {
+      setOwnerLoading(false)
+    }
+  }, [])
+
+  async function onSaveOwner(event: FormEvent) {
+    event.preventDefault()
+    setOwnerSaving(true)
+    setOwnerSaved(false)
+    setOwnerError(null)
+    try {
+      const res = await saveWhatsAppOwner({ name: ownerName.trim(), phone: ownerPhone.trim() })
+      setOwnerName(res.data.name)
+      setOwnerPhone(res.data.phone ?? '')
+      setOwnerSaved(true)
+    } catch (err) {
+      setOwnerError(err instanceof ApiError ? err.message : 'Unable to save the reminder owner')
+    } finally {
+      setOwnerSaving(false)
+    }
+  }
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void load()
+      void loadOwner()
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [load])
+  }, [load, loadOwner])
 
   return (
     <div>
@@ -41,8 +85,51 @@ export function SettingsPage() {
         breadcrumb={<span>Home / Settings</span>}
       />
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Company profile" description="Trading company details and default contact information.">
-          <p className="text-sm text-slate-500">Configuration UI coming in a later phase.</p>
+        <Card
+          title="Reminder owner"
+          description="9:00 and 17:00 WhatsApp reminders are sent to this person. Changes here replace the previous number."
+        >
+          {ownerLoading ? <LoadingState label="Loading owner…" /> : null}
+          {!ownerLoading && ownerError && !ownerName ? (
+            <ErrorState message={ownerError} onRetry={() => void loadOwner()} />
+          ) : null}
+          {!ownerLoading && (ownerName || !ownerError) ? (
+            <form className="space-y-4" onSubmit={(event) => void onSaveOwner(event)}>
+              <Input
+                label="Owner name"
+                name="ownerName"
+                value={ownerName}
+                onChange={(event) => {
+                  setOwnerSaved(false)
+                  setOwnerName(event.target.value)
+                }}
+                required
+                disabled={!canUpdateOwner || ownerSaving}
+                autoComplete="name"
+              />
+              <Input
+                label="WhatsApp number"
+                name="ownerPhone"
+                value={ownerPhone}
+                onChange={(event) => {
+                  setOwnerSaved(false)
+                  setOwnerPhone(event.target.value)
+                }}
+                required
+                disabled={!canUpdateOwner || ownerSaving}
+                inputMode="tel"
+                autoComplete="tel"
+                hint="Include the country code, for example +971501722409."
+              />
+              {ownerError ? <p className="text-sm text-rose-700">{ownerError}</p> : null}
+              {ownerSaved ? <p className="text-sm text-emerald-700">Owner saved.</p> : null}
+              <Can permission="settings.update">
+                <Button type="submit" busy={ownerSaving}>
+                  Save owner
+                </Button>
+              </Can>
+            </form>
+          ) : null}
         </Card>
 
         <Can
@@ -108,7 +195,7 @@ export function SettingsPage() {
             ) : null}
 
             <p className="mt-4 border-t border-slate-100 pt-4 text-sm text-slate-600">
-              The owner WhatsApp number receives the day's reminders at 9:00 and the ones still open at 17:00.
+              The reminder owner above receives the day's reminders at 9:00 and the ones still open at 17:00.
               Each staff reminder is sent at the time stored on that event.
             </p>
           </Card>
