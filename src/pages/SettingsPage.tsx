@@ -195,8 +195,9 @@ export function SettingsPage() {
             ) : null}
 
             <p className="mt-4 border-t border-slate-100 pt-4 text-sm text-slate-600">
-              The reminder owner above receives the day's reminders at 9:00 and the ones still open at 17:00.
-              Each staff reminder is sent at the time stored on that event.
+              The reminder owner above receives each open reminder at 9:00, one message per event.
+              At 17:00 the same template is sent again for anything still open. Staff reminders use that
+              template at the time stored on the event.
             </p>
           </Card>
         </Can>
