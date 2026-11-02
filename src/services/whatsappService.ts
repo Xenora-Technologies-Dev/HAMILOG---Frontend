@@ -25,6 +25,7 @@ export type WhatsAppLogItem = {
   direction: 'inbound' | 'outbound'
   at: string
   phone: string
+  phoneKey: string
   contactName: string | null
   body: string
   header: string | null
