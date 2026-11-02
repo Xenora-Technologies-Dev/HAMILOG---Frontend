@@ -79,7 +79,7 @@ export function WhatsAppLogPage() {
     <div>
       <PageHeader
         title="WhatsApp log"
-        description="Reminders scheduled for today go out at 9:00, and again at 17:00 if still open. Acknowledged events and ones moved to tomorrow are left out. Earlier days are not sent. Both use the event template below."
+        description="Reminders scheduled for today go out at 9:00 to the person who created the event, anyone assigned to it, and the company owner. Each message uses that person's name, and the same number is only messaged once. At 17:00 they receive it again if the event is still open. Acknowledged events and ones moved to tomorrow are left out. Earlier days are not sent. Both times use the event template below."
         breadcrumb={<span>Home / WhatsApp log</span>}
         actions={
           <Button variant="secondary" onClick={() => void load(direction)} disabled={loading}>

@@ -195,9 +195,10 @@ export function SettingsPage() {
             ) : null}
 
             <p className="mt-4 border-t border-slate-100 pt-4 text-sm text-slate-600">
-              The reminder owner above receives each reminder scheduled for that day at 9:00, one message per event.
-              At 17:00 the same template is sent again for anything from that day still open. Acknowledged
-              events and ones moved to tomorrow are left out. Earlier days are not sent.
+              Each reminder scheduled for that day is sent at 9:00 to the person who created the event, anyone
+              assigned to it, and the reminder owner above. Each message uses that person's own name. The same
+              phone number receives one message. At 17:00 they receive it again while the event is still open.
+              Acknowledged events and ones moved to tomorrow are left out. Earlier days are not sent.
             </p>
           </Card>
         </Can>
