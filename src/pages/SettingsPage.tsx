@@ -20,6 +20,7 @@ export function SettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [ownerName, setOwnerName] = useState('')
   const [ownerPhone, setOwnerPhone] = useState('')
+  const [backupPhone, setBackupPhone] = useState('')
   const [ownerLoading, setOwnerLoading] = useState(true)
   const [ownerError, setOwnerError] = useState<string | null>(null)
   const [ownerSaving, setOwnerSaving] = useState(false)
@@ -45,6 +46,7 @@ export function SettingsPage() {
       const res = await getWhatsAppOwner()
       setOwnerName(res.data.name)
       setOwnerPhone(res.data.phone ?? '')
+      setBackupPhone(res.data.backupPhone ?? '')
     } catch (err) {
       setOwnerError(err instanceof ApiError ? err.message : 'Unable to load the reminder owner')
     } finally {
@@ -58,9 +60,14 @@ export function SettingsPage() {
     setOwnerSaved(false)
     setOwnerError(null)
     try {
-      const res = await saveWhatsAppOwner({ name: ownerName.trim(), phone: ownerPhone.trim() })
+      const res = await saveWhatsAppOwner({
+        name: ownerName.trim(),
+        phone: ownerPhone.trim(),
+        backupPhone: backupPhone.trim(),
+      })
       setOwnerName(res.data.name)
       setOwnerPhone(res.data.phone ?? '')
+      setBackupPhone(res.data.backupPhone ?? '')
       setOwnerSaved(true)
     } catch (err) {
       setOwnerError(err instanceof ApiError ? err.message : 'Unable to save the reminder owner')
@@ -120,6 +127,19 @@ export function SettingsPage() {
                 inputMode="tel"
                 autoComplete="tel"
                 hint="Include the country code, for example +971501722409."
+              />
+              <Input
+                label="Backup owner WhatsApp number"
+                name="backupOwnerPhone"
+                value={backupPhone}
+                onChange={(event) => {
+                  setOwnerSaved(false)
+                  setBackupPhone(event.target.value)
+                }}
+                disabled={!canUpdateOwner || ownerSaving}
+                inputMode="tel"
+                autoComplete="tel"
+                hint="Gets the owner's reminder if the main number fails, is rate limited, or is not delivered within an hour. Include the country code. Leave empty for no backup."
               />
               {ownerError ? <p className="text-sm text-rose-700">{ownerError}</p> : null}
               {ownerSaved ? <p className="text-sm text-emerald-700">Owner saved.</p> : null}
