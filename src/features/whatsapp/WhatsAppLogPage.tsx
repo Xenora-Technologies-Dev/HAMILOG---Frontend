@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Button } from '@/components/ui/Button'
 import { ErrorState, LoadingState } from '@/components/ui/Feedback'
+import { usePermissions } from '@/hooks/usePermissions'
 import { ApiError } from '@/services/apiClient'
 import { getWhatsAppLog, type WhatsAppLogItem } from '@/services/whatsappService'
 import { dubaiToday } from '@/utils/date'
+import { SendTestMessageModal } from './SendTestMessageModal'
 
 type Chat = {
   key: string
@@ -107,6 +110,10 @@ export function WhatsAppLogPage() {
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [testOpen, setTestOpen] = useState(false)
+  const { roleCode, hasPermission } = usePermissions()
+  const isAdmin =
+    (roleCode === 'SUPER_ADMIN' || roleCode === 'ADMIN') && hasPermission('whatsapp.manage')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -133,7 +140,8 @@ export function WhatsAppLogPage() {
     const needle = query.trim().toLowerCase()
     if (!needle) return chats
     return chats.filter(
-      (chat) => chat.title.toLowerCase().includes(needle) || chat.phone.toLowerCase().includes(needle),
+      (chat) =>
+        chat.title.toLowerCase().includes(needle) || chat.phone.toLowerCase().includes(needle),
     )
   }, [chats, query])
 
@@ -144,88 +152,115 @@ export function WhatsAppLogPage() {
   const selected = chats.find((chat) => chat.key === selectedKey) ?? null
 
   return (
-    <div className="flex h-[calc(100dvh-6.75rem)] min-h-[520px] overflow-hidden rounded-xl border border-[#d1d7db] bg-white shadow-sm">
-      <aside
+    <>
+      {isAdmin ? (
+        <div className="mb-3 flex items-center justify-end">
+          <Button size="sm" onClick={() => setTestOpen(true)}>
+            Send test message
+          </Button>
+        </div>
+      ) : null}
+      {isAdmin ? (
+        <SendTestMessageModal
+          open={testOpen}
+          onClose={() => setTestOpen(false)}
+          onSent={() => void load()}
+        />
+      ) : null}
+      <div
         className={[
-          'min-h-0 w-full flex-col border-[#e9edef] bg-white md:flex md:w-[380px] md:shrink-0 md:border-r',
-          selected ? 'hidden' : 'flex',
+          'flex min-h-[520px] overflow-hidden rounded-xl border border-[#d1d7db] bg-white shadow-sm',
+          isAdmin ? 'h-[calc(100dvh-9.25rem)]' : 'h-[calc(100dvh-6.75rem)]',
         ].join(' ')}
       >
-        <div className="flex items-center justify-between bg-[#f0f2f5] px-4 py-3">
-          <h1 className="text-[22px] font-normal text-[#111b21]">Chats</h1>
-          <button
-            type="button"
-            onClick={() => void load()}
-            disabled={loading}
-            className="rounded-full p-2 text-[#54656f] hover:bg-black/5 disabled:opacity-50"
-            aria-label="Refresh chats"
-          >
-            <RefreshIcon />
-          </button>
-        </div>
-        <div className="px-3 py-2">
-          <label className="flex items-center gap-3 rounded-lg bg-[#f0f2f5] px-3 py-1.5 text-[#54656f]">
-            <SearchIcon />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search"
-              className="w-full bg-transparent py-1 text-[15px] text-[#111b21] outline-none placeholder:text-[#667781]"
-            />
-          </label>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto" role="listbox" aria-label="Chats">
-          {loading && !messages ? <LoadingState label="Loading chats…" /> : null}
-          {error ? <ErrorState message={error} onRetry={() => void load()} /> : null}
-          {!loading && !error && visibleChats.length === 0 ? (
-            <p className="px-6 py-10 text-center text-sm text-[#667781]">
-              {chats.length === 0 ? 'No messages yet.' : 'No chats match that search.'}
-            </p>
-          ) : null}
-          {visibleChats.map((chat) => (
+        <aside
+          className={[
+            'min-h-0 w-full flex-col border-[#e9edef] bg-white md:flex md:w-[380px] md:shrink-0 md:border-r',
+            selected ? 'hidden' : 'flex',
+          ].join(' ')}
+        >
+          <div className="flex items-center justify-between bg-[#f0f2f5] px-4 py-3">
+            <h1 className="text-[22px] font-normal text-[#111b21]">Chats</h1>
             <button
-              key={chat.key}
               type="button"
-              role="option"
-              aria-selected={chat.key === selectedKey}
-              onClick={() => setSelectedKey(chat.key)}
-              className={[
-                'flex w-full items-center gap-3 border-b border-[#e9edef] px-3 py-3 text-left hover:bg-[#f5f6f6]',
-                chat.key === selectedKey ? 'bg-[#f0f2f5]' : 'bg-white',
-              ].join(' ')}
+              onClick={() => void load()}
+              disabled={loading}
+              className="rounded-full p-2 text-[#54656f] hover:bg-black/5 disabled:opacity-50"
+              aria-label="Refresh chats"
             >
-              <Avatar name={chat.title} colorKey={chat.key} />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline justify-between gap-2">
-                  <span className="truncate text-[17px] text-[#111b21]">{chat.title}</span>
-                  <span className="shrink-0 text-xs text-[#667781]">{listTime(chat.last.at)}</span>
-                </span>
-                <span className="mt-0.5 flex items-center gap-1 text-[14px] text-[#667781]">
-                  {chat.last.direction === 'outbound' ? <StatusIcon status={chat.last.status} compact /> : null}
-                  <span className="truncate">{preview(chat.last.body)}</span>
-                </span>
-              </span>
+              <RefreshIcon />
             </button>
-          ))}
-        </div>
-      </aside>
-
-      <section
-        className={[
-          'min-h-0 min-w-0 flex-1 flex-col bg-[#efeae2]',
-          selected ? 'flex' : 'hidden md:flex',
-        ].join(' ')}
-      >
-        {selected ? (
-          <Conversation chat={selected} onBack={() => setSelectedKey(null)} />
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center border-b-[6px] border-[#25d366] px-6 text-center">
-            <p className="text-3xl font-light text-[#41525d]">WhatsApp</p>
-            <p className="mt-2 max-w-sm text-sm text-[#667781]">Select a chat to read the messages.</p>
           </div>
-        )}
-      </section>
-    </div>
+          <div className="px-3 py-2">
+            <label className="flex items-center gap-3 rounded-lg bg-[#f0f2f5] px-3 py-1.5 text-[#54656f]">
+              <SearchIcon />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search"
+                className="w-full bg-transparent py-1 text-[15px] text-[#111b21] outline-none placeholder:text-[#667781]"
+              />
+            </label>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto" role="listbox" aria-label="Chats">
+            {loading && !messages ? <LoadingState label="Loading chats…" /> : null}
+            {error ? <ErrorState message={error} onRetry={() => void load()} /> : null}
+            {!loading && !error && visibleChats.length === 0 ? (
+              <p className="px-6 py-10 text-center text-sm text-[#667781]">
+                {chats.length === 0 ? 'No messages yet.' : 'No chats match that search.'}
+              </p>
+            ) : null}
+            {visibleChats.map((chat) => (
+              <button
+                key={chat.key}
+                type="button"
+                role="option"
+                aria-selected={chat.key === selectedKey}
+                onClick={() => setSelectedKey(chat.key)}
+                className={[
+                  'flex w-full items-center gap-3 border-b border-[#e9edef] px-3 py-3 text-left hover:bg-[#f5f6f6]',
+                  chat.key === selectedKey ? 'bg-[#f0f2f5]' : 'bg-white',
+                ].join(' ')}
+              >
+                <Avatar name={chat.title} colorKey={chat.key} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className="truncate text-[17px] text-[#111b21]">{chat.title}</span>
+                    <span className="shrink-0 text-xs text-[#667781]">
+                      {listTime(chat.last.at)}
+                    </span>
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-1 text-[14px] text-[#667781]">
+                    {chat.last.direction === 'outbound' ? (
+                      <StatusIcon status={chat.last.status} compact />
+                    ) : null}
+                    <span className="truncate">{preview(chat.last.body)}</span>
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <section
+          className={[
+            'min-h-0 min-w-0 flex-1 flex-col bg-[#efeae2]',
+            selected ? 'flex' : 'hidden md:flex',
+          ].join(' ')}
+        >
+          {selected ? (
+            <Conversation chat={selected} onBack={() => setSelectedKey(null)} />
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center border-b-[6px] border-[#25d366] px-6 text-center">
+              <p className="text-3xl font-light text-[#41525d]">WhatsApp</p>
+              <p className="mt-2 max-w-sm text-sm text-[#667781]">
+                Select a chat to read the messages.
+              </p>
+            </div>
+          )}
+        </section>
+      </div>
+    </>
   )
 }
 
@@ -274,7 +309,9 @@ function Conversation({ chat, onBack }: { chat: Chat; onBack: () => void }) {
             <div key={message.id}>
               {showDay ? (
                 <div className="my-3 flex justify-center">
-                  <span className="rounded-lg bg-white px-3 py-1 text-xs text-[#54656f] shadow-sm">{dayLabel(message.at)}</span>
+                  <span className="rounded-lg bg-white px-3 py-1 text-xs text-[#54656f] shadow-sm">
+                    {dayLabel(message.at)}
+                  </span>
                 </div>
               ) : null}
               <div className={outbound ? 'mb-1.5 flex justify-end' : 'mb-1.5 flex justify-start'}>
@@ -284,15 +321,26 @@ function Conversation({ chat, onBack }: { chat: Chat; onBack: () => void }) {
                     outbound ? 'bg-[#d9fdd3]' : 'bg-white',
                   ].join(' ')}
                 >
+                  {message.isTest ? (
+                    <p className="px-1 pb-0.5">
+                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-amber-800 uppercase">
+                        Test
+                      </span>
+                    </p>
+                  ) : null}
                   {message.header ? <p className="px-1 font-semibold">{message.header}</p> : null}
                   <p className="px-1 whitespace-pre-wrap">{message.body}</p>
-                  {message.footer ? <p className="px-1 text-[12px] text-[#667781]">{message.footer}</p> : null}
+                  {message.footer ? (
+                    <p className="px-1 text-[12px] text-[#667781]">{message.footer}</p>
+                  ) : null}
                   <p className="flex items-center justify-end gap-1 px-1 pt-0.5 text-[11px] leading-none text-[#667781]">
                     <span>{clock(message.at)}</span>
                     {outbound ? <StatusIcon status={message.status} /> : null}
                   </p>
                   {outbound && message.status === 'FAILED' ? (
-                    <p className="px-1 text-[12px] text-[#ea0038]">{message.failureReason || 'Not delivered'}</p>
+                    <p className="px-1 text-[12px] text-[#ea0038]">
+                      {message.failureReason || 'Not delivered'}
+                    </p>
                   ) : null}
                 </div>
               </div>
@@ -320,7 +368,8 @@ function Avatar({ name, colorKey }: { name: string; colorKey: string }) {
 function StatusIcon({ status, compact = false }: { status: string; compact?: boolean }) {
   const size = compact ? 14 : 16
   if (status === 'READ') return <DoubleTick size={size} className="text-[#53bdeb]" label="Read" />
-  if (status === 'DELIVERED') return <DoubleTick size={size} className="text-[#8696a0]" label="Delivered" />
+  if (status === 'DELIVERED')
+    return <DoubleTick size={size} className="text-[#8696a0]" label="Delivered" />
   if (status === 'SENT') return <SingleTick size={size} className="text-[#8696a0]" label="Sent" />
   if (status === 'QUEUED') return <ClockIcon size={size} label="Pending" />
   if (status === 'FAILED') return <FailedIcon label="Failed" />
@@ -328,9 +377,24 @@ function StatusIcon({ status, compact = false }: { status: string; compact?: boo
   return null
 }
 
-function SingleTick({ size, className, label }: { size: number; className: string; label: string }) {
+function SingleTick({
+  size,
+  className,
+  label,
+}: {
+  size: number
+  className: string
+  label: string
+}) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" className={className} aria-label={label} role="img">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      className={className}
+      aria-label={label}
+      role="img"
+    >
       <path
         d="M3.2 8.3 6.1 11.2 12.8 4.5"
         fill="none"
@@ -343,9 +407,24 @@ function SingleTick({ size, className, label }: { size: number; className: strin
   )
 }
 
-function DoubleTick({ size, className, label }: { size: number; className: string; label: string }) {
+function DoubleTick({
+  size,
+  className,
+  label,
+}: {
+  size: number
+  className: string
+  label: string
+}) {
   return (
-    <svg width={size + 4} height={size} viewBox="0 0 20 16" className={className} aria-label={label} role="img">
+    <svg
+      width={size + 4}
+      height={size}
+      viewBox="0 0 20 16"
+      className={className}
+      aria-label={label}
+      role="img"
+    >
       <path
         d="M1.6 8.4 4.4 11.2 10.6 5"
         fill="none"
@@ -368,16 +447,36 @@ function DoubleTick({ size, className, label }: { size: number; className: strin
 
 function ClockIcon({ size, label }: { size: number; label: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" className="text-[#8696a0]" aria-label={label} role="img">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      className="text-[#8696a0]"
+      aria-label={label}
+      role="img"
+    >
       <circle cx="8" cy="8" r="5.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M8 5.2V8l1.8 1.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path
+        d="M8 5.2V8l1.8 1.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }
 
 function FailedIcon({ label }: { label: string }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 16 16" className="text-[#ea0038]" aria-label={label} role="img">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      className="text-[#ea0038]"
+      aria-label={label}
+      role="img"
+    >
       <circle cx="8" cy="8" r="6.2" fill="currentColor" />
       <path d="M8 4.4v4.2" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
       <circle cx="8" cy="11.2" r="0.8" fill="white" />
@@ -411,7 +510,13 @@ function RefreshIcon() {
 function BackIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M15 5 8 12l7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M15 5 8 12l7 7"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }
